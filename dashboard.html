@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Decision Engine | Live Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        #graph-container { width: 100%; height: 600px; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155; }
+        .loader { border-top-color: #3b82f6; animation: spinner 1s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        <header class="text-center space-y-3 mt-4">
+            <div class="inline-block px-4 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-semibold mb-2">
+                Powered by Featherless AI
+            </div>
+            <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-emerald-400 to-teal-400">
+                Advanced Decision Engine
+            </h1>
+            <p class="text-slate-400 max-w-2xl mx-auto text-lg">Ask any question. The AI will analyze the context, weigh tradeoffs, and map the logic instantly.</p>
+        </header>
+
+        <div class="glass-panel p-6 rounded-2xl shadow-2xl border border-slate-700">
+            <textarea id="query" rows="2" class="w-full bg-slate-800/50 border border-slate-600 rounded-xl p-4 text-lg text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-slate-500 transition-all" placeholder="e.g., I'm a 2nd-year CSE student in Hyderabad with a budget of ₹60,000. What laptop should I buy for coding and hackathons?"></textarea>
+            <div class="flex justify-between items-center mt-4">
+                <span class="text-sm text-slate-500">Pressing 'Generate' will query the AI model live.</span>
+                <button onclick="runDynamicEngine()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 px-8 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/20 transform hover:-translate-y-1">
+                    Generate Analysis & Graph
+                </button>
+            </div>
+        </div>
+
+        <div id="loading" class="hidden flex flex-col items-center justify-center py-16 space-y-6">
+            <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-700 h-16 w-16"></div>
+            <p id="loading-text" class="text-emerald-400 font-mono text-lg animate-pulse">Consulting AI... structuring logic... drawing graph...</p>
+        </div>
+        <div id="error-box" class="hidden bg-red-500/10 border border-red-500 text-red-300 p-6 rounded-xl text-center font-mono shadow-lg"></div>
+
+        <div id="results" class="hidden grid grid-cols-1 xl:grid-cols-12 gap-6 pb-12">
+            
+            <div class="glass-panel p-6 rounded-2xl space-y-8 xl:col-span-5 flex flex-col max-h-[800px] overflow-y-auto">
+                <div>
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2 mb-3">
+                        <span class="bg-blue-500 w-2 h-6 rounded-full"></span> Expert Analysis
+                    </h3>
+                    <p id="detailed-analysis" class="text-slate-300 leading-relaxed whitespace-pre-line text-sm md:text-base"></p>
+                </div>
+
+                <div class="bg-emerald-900/20 border border-emerald-500/20 p-5 rounded-xl">
+                    <h3 class="text-lg font-bold text-emerald-400 mb-2">Final Recommendation</h3>
+                    <p id="final-decision" class="text-white font-medium"></p>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Top Options</h3>
+                        <ul id="options-list" class="space-y-2 text-slate-300 text-sm"></ul>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Key Tradeoffs</h3>
+                        <ul id="tradeoffs-list" class="space-y-2 text-slate-300 text-sm"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel p-2 rounded-2xl xl:col-span-7 flex flex-col relative overflow-hidden">
+                <div class="absolute top-4 left-6 z-10 pointer-events-none">
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span class="bg-purple-500 w-2 h-6 rounded-full"></span> Logic Map
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-1">Scroll to zoom. Drag nodes to explore.</p>
+                </div>
+                <div id="graph-container" class="mt-2 rounded-xl"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API CONFIGURATION ---
+        const FEATHERLESS_API_KEY = 'rc_adcaa768ac77b9d9f597625439f9e79d927599c7fef2bbdb144f3646b173d627'; 
+
+        async function runDynamicEngine() {
+            const query = document.getElementById('query').value;
+            if (!query) return alert("Please type a question first.");
+
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('error-box').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            
+            try {
+                // The Mega-Prompt: Forces the AI to act like a top-tier consultant
+                const promptString = `
+You are an elite, highly intelligent advisory AI. The user has asked: "${query}".
+You must provide a deep, thoughtful analysis AND map out the logic for a visual node graph.
+
+REQUIREMENTS:
+1. Output ONLY a raw, valid JSON object. No intro text, no markdown code blocks (\`\`\`json). Just the JSON.
+2. The JSON must exactly match this structure:
+{
+  "detailed_analysis": "Write 2-3 detailed paragraphs analyzing the problem. Act like an expert consultant. Give real facts, numbers, or specific advice (e.g., specific laptop models, specific subjects/frameworks). Use \\n\\n for paragraph breaks.",
+  "final_decision": "One clear, definitive sentence summarizing the best choice.",
+  "options": ["Option 1 with a brief detail", "Option 2 with a brief detail", "Option 3"],
+  "tradeoffs": ["Tradeoff 1", "Tradeoff 2", "Tradeoff 3"],
+  "graph_nodes": [
+    {"id": 1, "label": "Main Topic/Question", "color": "#3b82f6"},
+    {"id": 2, "label": "Path/Option 1", "color": "#10b981"},
+    {"id": 3, "label": "Path/Option 2", "color": "#f59e0b"},
+    {"id": 4, "label": "Pro/Con detail", "color": "#64748b"},
+    {"id": 5, "label": "Final Choice", "color": "#8b5cf6", "shape": "diamond"}
+  ],
+  "graph_edges": [
+    {"from": 1, "to": 2, "label": "Considers"},
+    {"from": 1, "to": 3, "label": "Considers"},
+    {"from": 2, "to": 4, "label": "Drawback"},
+    {"from": 2, "to": 5, "label": "Wins because X"}
+  ]
+}
+Ensure node IDs are integers. Make the graph edges logical.`;
+
+                // Using Mistral-Nemo to avoid the 403 Forbidden error
+                const flResponse = await fetch('https://api.featherless.ai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${FEATHERLESS_API_KEY}`, 
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({
+                        model: "mistralai/Mistral-Nemo-Instruct-2407", 
+                        messages: [{ role: "user", content: promptString }],
+                        temperature: 0.3
+                    })
+                });
+
+                if (!flResponse.ok) {
+                    if (flResponse.status === 403) throw new Error("API Error 403: Model access denied.");
+                    if (flResponse.status === 401) throw new Error("API Error 401: Invalid API Key.");
+                    throw new Error(`API Error: ${flResponse.status} - Could not reach AI server.`);
+                }
+
+                const data = await flResponse.json();
+                let rawText = data.choices[0].message.content;
+                
+                let aiResult;
+                try {
+                    // Strips markdown and safely parses the JSON
+                    const jsonStart = rawText.indexOf('{');
+                    const jsonEnd = rawText.lastIndexOf('}');
+                    if (jsonStart === -1 || jsonEnd === -1) throw new Error("Format error.");
+                    
+                    const cleanJson = rawText.substring(jsonStart, jsonEnd + 1);
+                    aiResult = JSON.parse(cleanJson);
+                } catch (parseError) {
+                    console.error("Failed AI Output:", rawText);
+                    throw new Error("The AI got confused organizing the data. Try hitting 'Generate' again.");
+                }
+
+                // Update text content
+                document.getElementById('detailed-analysis').innerText = aiResult.detailed_analysis || "Analysis unavailable.";
+                document.getElementById('final-decision').innerText = aiResult.final_decision || "Pending...";
+                
+                const populateList = (id, items) => {
+                    const ul = document.getElementById(id);
+                    ul.innerHTML = '';
+                    if (items && Array.isArray(items)) {
+                        items.forEach(item => {
+                            const li = document.createElement('li');
+                            li.className = "flex items-start gap-2 before:content-['▹'] before:text-blue-400";
+                            li.innerText = item;
+                            ul.appendChild(li);
+                        });
+                    }
+                };
+
+                populateList('options-list', aiResult.options);
+                populateList('tradeoffs-list', aiResult.tradeoffs);
+
+                // Render Graph
+                const container = document.getElementById('graph-container');
+                const graphData = {
+                    nodes: new vis.DataSet(aiResult.graph_nodes.map(n => ({
+                        ...n, font: {color: 'white', face: 'Inter'}, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10, x: 5, y: 5 }
+                    }))),
+                    edges: new vis.DataSet(aiResult.graph_edges.map(e => ({
+                        ...e, font: {color: '#94a3b8', strokeWidth: 0, align: 'middle', face: 'Inter'}, color: {color: '#475569', highlight: '#3b82f6'}, width: 2
+                    })))
+                };
+                const options = {
+                    nodes: { shape: 'box', margin: 12, borderRadius: 8, borderWidth: 0 },
+                    edges: { arrows: 'to', smooth: { type: 'cubicBezier' } },
+                    physics: { barnesHut: { gravitationalConstant: -4000, centralGravity: 0.3, springLength: 150 } },
+                    interaction: { hover: true, tooltipDelay: 200 }
+                };
+                new vis.Network(container, graphData, options);
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('results').classList.remove('hidden');
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loading').classList.add('hidden');
+                const errorBox = document.getElementById('error-box');
+                errorBox.innerHTML = `<strong>Error!</strong> <br/> ${error.message}`;
+                errorBox.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
